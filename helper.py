@@ -1,18 +1,20 @@
 import time
 
+from fuzzywuzzy import fuzz
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 
-from mapping import format_station_name
-    
+from mapping import format_station_name, format_bus_stop_name, get_bus_direction
+
 
 def calculate_fare(trips):
   # open LTA's fare calculator page
   driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
   driver.get("https://www.lta.gov.sg/content/ltagov/en/map/fare-calculator.html")
+  time.sleep(1)
 
   # set fare type
   fare_type = Select(driver.find_element(By.ID, "fareType"))
@@ -39,8 +41,10 @@ def calculate_fare(trips):
 
   # calculate
   driver.find_element(By.ID, "calTrip").click()
-  time.sleep(1)
-  fare_in_cents = int(float(driver.find_element(By.CSS_SELECTOR, "h4.fare").text[1:]) * 100)
+  fare_text = ""
+  while fare_text == "":
+    fare_text = driver.find_element(By.CSS_SELECTOR, "h4.fare").text
+  fare_in_cents = int(float(fare_text[1:]) * 100)
   return fare_in_cents
 
 
@@ -52,9 +56,9 @@ def fill_up_trip(card_pane, trip):
     mrt_fill(card_pane, fr, to)
   else:
     no = trip["BusServiceNo"]
-    dir = str(int(trip["BusDirection"][-1]) - 1)  # 1-indexed in SimplyGo, 0 indexed in LTA calculator page
-    fr = trip["OriBoardingBusStopCode"] + " - " + trip["EntryLocationName"]
-    to = trip["OriAlightingBusStopCode"] + " - " + trip["ExitLocationName"]
+    dir = get_bus_direction(trip)
+    fr = format_bus_stop_name(trip["OriBoardingBusStopCode"] + " - " + trip["EntryLocationName"])
+    to = format_bus_stop_name(trip["OriAlightingBusStopCode"] + " - " + trip["ExitLocationName"])
     bus_fill(card_pane, no, dir, fr, to)
 
 
@@ -73,10 +77,30 @@ def bus_fill(card_pane, no, dir, fr, to):
   bus_dir.select_by_value(dir)
 
   bus_fr = Select(bus_seg.find_element(By.CSS_SELECTOR, "select.busFrom"))
-  bus_fr.select_by_visible_text(fr)
+  select_bus_stop(bus_fr, fr)
 
   bus_to = Select(bus_seg.find_element(By.CSS_SELECTOR, "select.to"))
-  bus_to.select_by_visible_text(to)
+  select_bus_stop(bus_to, to)
+
+
+def select_bus_stop(select_ele, text):
+  try:
+    select_ele.select_by_visible_text(text)
+  except:
+    print(f"cannot find {text} in options")
+
+    # use fuzzywuzzy to find the best options if not found
+    best_text = None
+    best_ratio = 0
+    for option in select_ele.options:
+      curr_text = option.text
+      curr_ratio = fuzz.ratio(curr_text.lower(), text.lower())  # case insensitive
+      if curr_ratio > best_ratio:
+        best_text = curr_text
+        best_ratio = curr_ratio
+
+    print(f"selecting {best_text} instead")
+    select_ele.select_by_visible_text(best_text)
 
 
 def mrt_fill(card_pane, fr, to):
