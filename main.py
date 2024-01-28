@@ -10,7 +10,8 @@ histories = dataset['Histories']
 total_fare = 0
 for history in histories:
   trips = history['Trips']
-  fare = calculate_fare(trips)
+  transaction_date = history['EntryTransactionDate']
+  fare = calculate_fare(trips, transaction_date)
   total_fare += fare
 
 print(total_fare)

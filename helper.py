@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 
 from fuzzywuzzy import fuzz
@@ -10,7 +11,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from mapping import format_station_name, format_bus_stop_name, get_bus_direction
 
 
-def calculate_fare(trips):
+def calculate_fare(trips, transaction_date):
   # open LTA's fare calculator page
   driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
   driver.get("https://www.lta.gov.sg/content/ltagov/en/map/fare-calculator.html")
@@ -45,6 +46,18 @@ def calculate_fare(trips):
   while fare_text == "":
     fare_text = driver.find_element(By.CSS_SELECTOR, "h4.fare").text
   fare_in_cents = int(float(fare_text[1:]) * 100)
+
+  # use old fare structure if before 23 Dec 2023
+  if datetime.strptime(transaction_date, "%Y-%m-%dT%H:%M:%S") < datetime(2023, 12, 23):
+    distance_text = ""
+    while distance_text == "":
+      distance_text = driver.find_element(By.CSS_SELECTOR, "span.distance").text
+    distance = float(distance_text.split(" ")[0])
+    if distance <= 4.2:
+      fare_in_cents -= 10
+    else:
+      fare_in_cents -= 11
+  
   return fare_in_cents
 
 
