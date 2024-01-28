@@ -2,3 +2,4 @@ __pycache__
 
 get_from_simplygo.py
 data*.json
+out*.json

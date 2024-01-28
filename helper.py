@@ -11,7 +11,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from mapping import format_station_name, format_bus_stop_name, get_bus_direction
 
 
-def calculate_fare(trips, transaction_date):
+def calculate_fare_and_summarise_trips(trips, transaction_date):
   # open LTA's fare calculator page
   driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
   driver.get("https://www.lta.gov.sg/content/ltagov/en/map/fare-calculator.html")
@@ -47,18 +47,44 @@ def calculate_fare(trips, transaction_date):
     fare_text = driver.find_element(By.CSS_SELECTOR, "h4.fare").text
   fare_in_cents = int(float(fare_text[1:]) * 100)
 
+  # get table
+  table = driver.find_element(By.CSS_SELECTOR, "table.results-container-table")
+  table_body = table.find_element(By.CSS_SELECTOR, "tbody")
+  rows = table_body.find_elements(By.CSS_SELECTOR, "tr")
+  summarised_trips = []
+  for row in rows:
+    cols = row.find_elements(By.CSS_SELECTOR, "td")
+    summarised_trips.append({
+      "Trip No": cols[0].text,
+      "Service": cols[1].text,
+      "Board": cols[2].text,
+      "Alight": cols[3].text,
+      "Distance": cols[4].text,
+      "Fare": cols[5].text,
+    })
+  
+  # get distance
+  distance_text = ""
+  while distance_text == "":
+    distance_text = driver.find_element(By.CSS_SELECTOR, "span.distance").text
+  distance = float(distance_text.split(" ")[0])
+
   # use old fare structure if before 23 Dec 2023
   if datetime.strptime(transaction_date, "%Y-%m-%dT%H:%M:%S") < datetime(2023, 12, 23):
-    distance_text = ""
-    while distance_text == "":
-      distance_text = driver.find_element(By.CSS_SELECTOR, "span.distance").text
-    distance = float(distance_text.split(" ")[0])
     if distance <= 4.2:
       fare_in_cents -= 10
     else:
       fare_in_cents -= 11
+
+  # return summary
+  summary = {
+    "Transaction Date": transaction_date,
+    "Total Distance": distance_text,
+    "Total Fare (After Adjustment)": fare_in_cents,
+    "Trips": summarised_trips
+  }
   
-  return fare_in_cents
+  return fare_in_cents, summary
 
 
 def fill_up_trip(card_pane, trip):
